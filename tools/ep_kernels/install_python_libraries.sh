@@ -17,6 +17,13 @@ CUDA_HOME=${CUDA_HOME:-/usr/local/cuda}
 # install dependencies if not installed
 $PIP_CMD install cmake torch ninja
 
+#export CUDA_HOME=/usr/local/cuda
+export TORCH_CUDA_ARCH_LIST="8.0" 
+export CUDAARCHS=80
+export CMAKE_CUDA_ARCHITECTURES=80
+export CMAKE_CUDA_FLAGS="--generate-code=arch=compute_80,code=sm_80"
+export MAX_JOBS=$(nproc)
+
 # build nvshmem
 pushd $WORKSPACE
 mkdir -p nvshmem_src
@@ -114,6 +121,10 @@ clone_repo() {
 pushd $WORKSPACE
 clone_repo "https://github.com/ppl-ai/pplx-kernels" "pplx-kernels" "setup.py" "c336faf"
 cd pplx-kernels
+export TORCH_CUDA_ARCH_LIST="8.0"
+export CUDAARCHS=80
+export DISABLE_SM90_FEATURES=1
+export DISABLE_AGGRESSIVE_PTX_INSTRS=1
 $PIP_CMD install --no-build-isolation -vvv -e .
 popd
 
@@ -121,6 +132,10 @@ popd
 pushd $WORKSPACE
 clone_repo "https://github.com/deepseek-ai/DeepEP" "DeepEP" "setup.py" "e3908bf"
 cd DeepEP
-export NVSHMEM_DIR=$WORKSPACE/nvshmem_install
+export TORCH_CUDA_ARCH_LIST="8.0"
+export CUDAARCHS=80
+export DISABLE_SM90_FEATURES=1
+export DISABLE_AGGRESSIVE_PTX_INSTRS=1
+#export NVSHMEM_DIR=$WORKSPACE/nvshmem_install
 $PIP_CMD install --no-build-isolation -vvv -e .
 popd

@@ -55,6 +55,7 @@ TERM_PLOTLIB_AVAILABLE = (importlib.util.find_spec("termplotlib") is not None) a
     shutil.which("gnuplot") is not None
 )
 
+import pynvml
 
 class TaskType(Enum):
     GENERATION = "generation"
@@ -618,6 +619,18 @@ async def benchmark(
                 request_func_input=request_func_input, session=session, pbar=pbar
             )
 
+    pynvml.nvmlInit()
+    device_count = pynvml.nvmlDeviceGetCount()
+    start_energies = []
+    print(f"[NVML] measuring energy on {device_count} GPU(s) from {__file__}")
+    for i in range(device_count):
+        handle = pynvml.nvmlDeviceGetHandleByIndex(i)
+        try:
+            start_energies.append(pynvml.nvmlDeviceGetTotalEnergyConsumption(handle))
+        except pynvml.NVMLError as err:
+            start_energies.append(None)
+            print(f"[NVML] {i}-th GPU doesn't support energy consumption measurement: {err}")
+
     benchmark_start_time = time.perf_counter()
     tasks: list[asyncio.Task] = []
 
@@ -686,6 +699,23 @@ async def benchmark(
         pbar.close()
 
     benchmark_duration = time.perf_counter() - benchmark_start_time
+    total_energy_joules = 0
+    energy_per_gpu_joules = []
+    for i in range(device_count):
+        handle = pynvml.nvmlDeviceGetHandleByIndex(i)
+        try:
+            end_energy = pynvml.nvmlDeviceGetTotalEnergyConsumption(handle)
+            if start_energies[i] is not None:
+                energy = (end_energy - start_energies[i])/1000.0
+                total_energy_joules += energy
+                energy_per_gpu_joules.append(energy)
+            else:
+                energy_per_gpu_joules.append(None)
+        except pynvml.NVMLError as err:
+            print(f"[NVML] {i}-th GPU doesn't support energy consumption measurement: {err}")
+            energy_per_gpu_joules.append(None)
+    
+    pynvml.nvmlShutdown()
 
     if task_type == TaskType.GENERATION:
         metrics, actual_output_lens = calculate_metrics(
@@ -746,6 +776,11 @@ async def benchmark(
             "Total Token throughput (tok/s):", metrics.total_token_throughput
         )
     )
+
+    print("{:<40} {:<10.3f}".format("Total GPU energy (J):", total_energy_joules))
+    for idx, e in enumerate(energy_per_gpu_joules):
+        if e is not None:
+            print("{:<40} {:<10.3f}".format(f"GPU{idx} energy (J):", e))
 
     if isinstance(metrics, BenchmarkMetrics):
         result = {
